@@ -15,6 +15,7 @@ class RentedCloth {
   final String ageRange;
   final double price;
   final String userId;
+  final int quantity; 
 
   RentedCloth({
     required this.id,
@@ -23,6 +24,7 @@ class RentedCloth {
     required this.ageRange,
     required this.price,
     required this.userId,
+    required this.quantity, 
   });
 }
 
@@ -62,6 +64,7 @@ class _RentedClothesScreenState extends State<RentedClothesScreen> {
               price: double.tryParse(value['price'].toString()) ?? 0,
               imageBase64: value['imageBase64'] ?? '',
               userId: value['userId'] ?? '',
+              quantity: int.tryParse(value['quantity'].toString()) ?? 0, 
             ));
           }
         });
@@ -162,10 +165,20 @@ class _RentedClothesScreenState extends State<RentedClothesScreen> {
                               fontSize: 18,
                               color: Colors.white),
                         ),
-                        subtitle: Text(
-                          'Age: ${cloth.ageRange}',
-                          style: const TextStyle(
-                              color: Colors.white70, fontSize: 14),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Age: ${cloth.ageRange}',
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 14),
+                            ),
+                            Text(
+                              'Quantity: ${cloth.quantity}', 
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 14),
+                            ),
+                          ],
                         ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -249,7 +262,8 @@ String? validateField(String label, String value) {
     }
   }
 
-  if (label == "Size (Age Range)" || label == "Price") {
+  if (label == "Size (Age Range)" || label == "Price" || label == "Quantity") {
+    
     final numValue = double.tryParse(value);
     if (numValue == null) return '$label must be a number';
     if (numValue <= 0) return '$label must be greater than 0';
@@ -272,6 +286,7 @@ class _AddClothesDetailsScreenState extends State<AddClothesDetailsScreen> {
   final TextEditingController nameController = TextEditingController();
   final TextEditingController sizeController = TextEditingController();
   final TextEditingController priceController = TextEditingController();
+  final TextEditingController quantityController = TextEditingController(); 
   File? _pickedImage;
   bool _imageError = false;
   final _auth = FirebaseAuth.instance;
@@ -312,6 +327,7 @@ class _AddClothesDetailsScreenState extends State<AddClothesDetailsScreen> {
       'name': nameController.text.trim(),
       'ageRange': sizeController.text.trim(),
       'price': double.parse(priceController.text),
+      'quantity': int.parse(quantityController.text), 
       'imageBase64': base64Image,
       'userId': user.uid,
     };
@@ -360,6 +376,9 @@ class _AddClothesDetailsScreenState extends State<AddClothesDetailsScreen> {
                 const SizedBox(height: 16),
                 _buildTextField("Price", priceController,
                     keyboardType: TextInputType.number),
+                const SizedBox(height: 16),
+                _buildTextField("Quantity", quantityController,
+                    keyboardType: TextInputType.number), 
                 const SizedBox(height: 16),
                 GestureDetector(
                   onTap: _pickImage,
