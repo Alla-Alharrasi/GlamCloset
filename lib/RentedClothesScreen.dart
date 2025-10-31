@@ -64,7 +64,7 @@ class _RentedClothesScreenState extends State<RentedClothesScreen> {
               price: double.tryParse(value['price'].toString()) ?? 0,
               imageBase64: value['imageBase64'] ?? '',
               userId: value['userId'] ?? '',
-              quantity: int.tryParse(value['quantity'].toString()) ?? 0, 
+              quantity: int.tryParse(value['quantity']?.toString() ?? '0') ?? 0, 
             ));
           }
         });
@@ -165,20 +165,10 @@ class _RentedClothesScreenState extends State<RentedClothesScreen> {
                               fontSize: 18,
                               color: Colors.white),
                         ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Age: ${cloth.ageRange}',
-                              style: const TextStyle(
-                                  color: Colors.white70, fontSize: 14),
-                            ),
-                            Text(
-                              'Quantity: ${cloth.quantity}', 
-                              style: const TextStyle(
-                                  color: Colors.white70, fontSize: 14),
-                            ),
-                          ],
+                        subtitle: Text(
+                          'Age: ${cloth.ageRange}\nQuantity: ${cloth.quantity}', 
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 14),
                         ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -209,6 +199,13 @@ class _RentedClothesScreenState extends State<RentedClothesScreen> {
                             topRight: Radius.circular(20),
                             bottomLeft: Radius.circular(12),
                           ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black26,
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
                         child: Text(
                           '${cloth.price} OMR',
@@ -247,177 +244,6 @@ class _RentedClothesScreenState extends State<RentedClothesScreen> {
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
           BottomNavigationBarItem(icon: Icon(Icons.more_horiz), label: 'More'),
         ],
-      ),
-    );
-  }
-}
-
-/// ------------------- Shared Validator -------------------
-String? validateField(String label, String value) {
-  if (value.trim().isEmpty) return '$label cannot be empty';
-
-  if (label == "Name of the cloth") {
-    if (!RegExp(r'^[a-zA-Z\s]+$').hasMatch(value)) {
-      return 'Name must contain only letters';
-    }
-  }
-
-  if (label == "Size (Age Range)" || label == "Price" || label == "Quantity") {
-    
-    final numValue = double.tryParse(value);
-    if (numValue == null) return '$label must be a number';
-    if (numValue <= 0) return '$label must be greater than 0';
-  }
-
-  return null;
-}
-
-/// ------------------- Add Clothes Screen -------------------
-class AddClothesDetailsScreen extends StatefulWidget {
-  const AddClothesDetailsScreen({super.key});
-
-  @override
-  State<AddClothesDetailsScreen> createState() =>
-      _AddClothesDetailsScreenState();
-}
-
-class _AddClothesDetailsScreenState extends State<AddClothesDetailsScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final TextEditingController nameController = TextEditingController();
-  final TextEditingController sizeController = TextEditingController();
-  final TextEditingController priceController = TextEditingController();
-  final TextEditingController quantityController = TextEditingController(); 
-  File? _pickedImage;
-  bool _imageError = false;
-  final _auth = FirebaseAuth.instance;
-
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery);
-
-    if (picked != null) {
-      final ext = picked.path.split('.').last.toLowerCase();
-      if (!['jpg', 'jpeg', 'png'].contains(ext)) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text("Only JPG, JPEG, or PNG images are allowed")));
-        return;
-      }
-
-      setState(() {
-        _pickedImage = File(picked.path);
-        _imageError = false;
-      });
-    }
-  }
-
-  void _saveCloth() async {
-    if (!_formKey.currentState!.validate() || _pickedImage == null) {
-      setState(() => _imageError = _pickedImage == null);
-      return;
-    }
-
-    final user = _auth.currentUser;
-    if (user == null) return;
-
-    final bytes = await _pickedImage!.readAsBytes();
-    final base64Image = base64Encode(bytes);
-
-    final newCloth = {
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
-      'name': nameController.text.trim(),
-      'ageRange': sizeController.text.trim(),
-      'price': double.parse(priceController.text),
-      'quantity': int.parse(quantityController.text), 
-      'imageBase64': base64Image,
-      'userId': user.uid,
-    };
-
-    await FirebaseDatabase.instance
-        .ref('rented_clothes/${newCloth['id']}')
-        .set(newCloth);
-    Navigator.pop(context);
-  }
-
-  Widget _buildTextField(String label, TextEditingController controller,
-      {TextInputType keyboardType = TextInputType.text}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        TextFormField(
-          controller: controller,
-          keyboardType: keyboardType,
-          validator: (value) => validateField(label, value ?? ''),
-          decoration: InputDecoration(
-            labelText: label,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-        const SizedBox(height: 5),
-      ],
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Add New Cloth")),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          autovalidateMode: AutovalidateMode.onUserInteraction,
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                _buildTextField("Name of the cloth", nameController),
-                const SizedBox(height: 16),
-                _buildTextField("Size (Age Range)", sizeController,
-                    keyboardType: TextInputType.number),
-                const SizedBox(height: 16),
-                _buildTextField("Price", priceController,
-                    keyboardType: TextInputType.number),
-                const SizedBox(height: 16),
-                _buildTextField("Quantity", quantityController,
-                    keyboardType: TextInputType.number), 
-                const SizedBox(height: 16),
-                GestureDetector(
-                  onTap: _pickImage,
-                  child: Container(
-                    height: 200,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[200],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: _imageError ? Colors.red : Colors.grey),
-                    ),
-                    child: _pickedImage != null
-                        ? Image.file(_pickedImage!, fit: BoxFit.cover)
-                        : const Center(
-                            child: Icon(Icons.add_a_photo,
-                                size: 50, color: Colors.grey),
-                          ),
-                  ),
-                ),
-                if (_imageError)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 8),
-                    child: Text("Please pick an image",
-                        style: TextStyle(color: Colors.red)),
-                  ),
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: _saveCloth,
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurple,
-                      minimumSize: const Size(double.infinity, 50)),
-                  child: const Text("Add Cloth",
-                      style: TextStyle(color: Colors.white, fontSize: 16)),
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }
