@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'PaymentSuccessScreen.dart';
 import 'theme_notifier.dart';
+import 'package:flutter/services.dart';
 
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key});
@@ -18,6 +19,23 @@ class _PaymentScreenState extends State<PaymentScreen> {
   final TextEditingController _expiryDateController = TextEditingController();
   final TextEditingController _cvvController = TextEditingController();
 
+  bool _isFormValid = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _cardHolderController.addListener(_checkFormValidity);
+    _cardNumberController.addListener(_checkFormValidity);
+    _expiryDateController.addListener(_checkFormValidity);
+    _cvvController.addListener(_checkFormValidity);
+  }
+
+  void _checkFormValidity() {
+    setState(() {
+      _isFormValid = _formKey.currentState?.validate() ?? false;
+    });
+  }
+
   void _processPayment() {
     if (_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -29,6 +47,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
         MaterialPageRoute(builder: (context) => const PaymentSuccessScreen()),
       );
     }
+  }
+
+  String _formatCardNumber(String input) {
+    final cleaned = input.replaceAll(' ', '');
+    final buffer = StringBuffer();
+    for (int i = 0; i < cleaned.length; i++) {
+      if (i % 4 == 0 && i != 0) buffer.write(' ');
+      buffer.write(cleaned[i]);
+    }
+    return buffer.toString();
   }
 
   @override
@@ -145,6 +173,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 hintColor: hintColor,
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) return 'Enter cardholder name';
+                  if (!RegExp(r'^[a-zA-Z\s]+$').hasMatch(value)) return 'Only letters allowed';
                   return null;
                 },
               ),
@@ -160,7 +189,20 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 fieldColor: fieldColor,
                 hintColor: hintColor,
                 keyboard: TextInputType.number,
-                maxLength: 16,
+                maxLength: 19,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(16),
+                ],
+                onChanged: (value) {
+                  final formatted = _formatCardNumber(value);
+                  if (formatted != value) {
+                    _cardNumberController.value = TextEditingValue(
+                      text: formatted,
+                      selection: TextSelection.collapsed(offset: formatted.length),
+                    );
+                  }
+                },
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) return 'Enter card number';
                   final cleaned = value.replaceAll(' ', '');
@@ -193,6 +235,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             if (value == null || value.isEmpty) return 'Enter expiry date';
                             final regex = RegExp(r'^(0[1-9]|1[0-2])\/\d{2}$');
                             if (!regex.hasMatch(value)) return 'Enter valid MM/YY';
+                            final parts = value.split('/');
+                            final month = int.parse(parts[0]);
+                            final year = int.parse('20${parts[1]}');
+                            final lastDateOfMonth = DateTime(year, month + 1, 0);
+                            if (lastDateOfMonth.isBefore(DateTime.now())) return 'Card has expired';
                             return null;
                           },
                         ),
@@ -234,14 +281,18 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: isDark ? Colors.white : Colors.black,
-                    foregroundColor: isDark ? Colors.black : Colors.white,
+                    backgroundColor: _isFormValid
+                        ? (isDark ? Colors.white : Colors.black)
+                        : Colors.grey,
+                    foregroundColor: _isFormValid
+                        ? (isDark ? Colors.black : Colors.white)
+                        : Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16.0),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12.0),
                     ),
                   ),
-                  onPressed: _processPayment,
+                  onPressed: _isFormValid ? _processPayment : null,
                   child: const Text("Pay", style: TextStyle(fontSize: 18)),
                 ),
               ),
@@ -261,6 +312,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
     TextInputType keyboard = TextInputType.text,
     String? Function(String?)? validator,
     int? maxLength,
+    List<TextInputFormatter>? inputFormatters,
+    Function(String)? onChanged,
   }) {
     return TextFormField(
       controller: controller,
@@ -268,7 +321,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
       style: TextStyle(color: textColor),
       maxLength: maxLength,
       validator: validator,
-      onChanged: (_) => setState(() {}), // refresh card preview
+      inputFormatters: inputFormatters,
+      onChanged: onChanged ?? (_) => setState(() {}), // refresh card preview
       decoration: InputDecoration(
         hintText: hint,
         counterText: "",
