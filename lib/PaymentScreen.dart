@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'PaymentSuccessScreen.dart';
+import 'PaymentFailedScreen.dart';
 import 'theme_notifier.dart';
 import 'package:flutter/services.dart';
+import 'database.dart';
 
 class PaymentScreen extends StatefulWidget {
-  const PaymentScreen({super.key});
+  final double amount;
+  const PaymentScreen({super.key, required this.amount});
 
   @override
   State<PaymentScreen> createState() => _PaymentScreenState();
@@ -20,6 +23,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   final TextEditingController _cvvController = TextEditingController();
 
   bool _isFormValid = false;
+  bool _isProcessing = false; // renamed from _isLoading
 
   @override
   void initState() {
@@ -36,15 +40,40 @@ class _PaymentScreenState extends State<PaymentScreen> {
     });
   }
 
-  void _processPayment() {
-    if (_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Payment Successful! 🎉')),
-      );
+  void _processPayment() async {
+    if (!_formKey.currentState!.validate()) return;
 
+    setState(() => _isProcessing = true);
+
+    await Future.delayed(const Duration(seconds: 1)); // simulate processing
+
+    final cleanedCardNumber = _cardNumberController.text.replaceAll(" ", "");
+    final expiry = _expiryDateController.text.split("/");
+    final month = int.parse(expiry[0]);
+    final year = int.parse("20${expiry[1]}");
+
+    final result = DummyPayment.verifyAndCharge(
+      inputCardNumber: cleanedCardNumber,
+      inputHolderName: _cardHolderController.text.trim(),
+      inputExpiryMonth: month,
+      inputExpiryYear: year,
+      inputCvv: _cvvController.text.trim(),
+      amount: widget.amount,
+    );
+
+    setState(() => _isProcessing = false);
+
+    if (result["success"]) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const PaymentSuccessScreen()),
+        MaterialPageRoute(builder: (context) => PaymentSuccessScreen()),
+      );
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PaymentFailedScreen(message: result["message"]),
+        ),
       );
     }
   }
@@ -292,10 +321,20 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       borderRadius: BorderRadius.circular(12.0),
                     ),
                   ),
-                  onPressed: _isFormValid ? _processPayment : null,
-                  child: const Text("Pay", style: TextStyle(fontSize: 18)),
+                  onPressed: _isFormValid && !_isProcessing ? _processPayment : null,
+                  child: _isProcessing
+                      ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                      : Text("Pay ${widget.amount.toStringAsFixed(2)} OMR",
+                      style: const TextStyle(fontSize: 18)),
                 ),
-              ),
+              )
             ],
           ),
         ),
@@ -322,7 +361,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       maxLength: maxLength,
       validator: validator,
       inputFormatters: inputFormatters,
-      onChanged: onChanged ?? (_) => setState(() {}), // refresh card preview
+      onChanged: onChanged ?? (_) => setState(() {}),
       decoration: InputDecoration(
         hintText: hint,
         counterText: "",
@@ -344,3 +383,4 @@ class _PaymentScreenState extends State<PaymentScreen> {
     super.dispose();
   }
 }
+ 
