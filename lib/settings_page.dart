@@ -2,43 +2,78 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
-
 import 'AccountDetails.dart';
 import 'ChatBotPage.dart';
 import 'WalletPage.dart';
+import 'user_login.dart';
 import 'theme_notifier.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+  final Widget? previousPage; // optional previous page
+  final bool? testIsAdmin; // for tests
+
+  const SettingsPage({super.key, this.previousPage, this.testIsAdmin});
 
   @override
   _SettingsPageState createState() => _SettingsPageState();
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  bool _notificationsEnabled = true;
-  bool isAdmin = false; // default, will fetch dynamically
+  bool inAppNotifications = true;
+  bool emailNotifications = true;
+  bool isAdmin = false;
 
   @override
   void initState() {
     super.initState();
-    _loadUserType();
+    if (widget.testIsAdmin != null) {
+      isAdmin = widget.testIsAdmin!;
+    } else {
+      _loadUserType();
+    }
+    _loadNotificationPreferences();
   }
 
-  // Fetch user type from Firebase
   void _loadUserType() async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
 
-    final userRef = FirebaseDatabase.instance.ref('users/$userId');
-    final snapshot = await userRef.get();
-
+    final snapshot = await FirebaseDatabase.instance.ref('users/$userId').get();
     if (snapshot.exists) {
       final data = snapshot.value as Map<dynamic, dynamic>;
       setState(() {
         isAdmin = data['userType'] == 'admin';
       });
     }
+  }
+
+  void _loadNotificationPreferences() async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    final snapshot = await FirebaseDatabase.instance
+        .ref('users/$userId/notificationPreferences')
+        .get();
+
+    if (snapshot.exists) {
+      final data = Map<String, dynamic>.from(snapshot.value as Map);
+      setState(() {
+        inAppNotifications = data['inApp'] ?? true;
+        emailNotifications = data['email'] ?? true;
+      });
+    }
+  }
+
+  void _saveNotificationPreferences() {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    FirebaseDatabase.instance
+        .ref('users/$userId/notificationPreferences')
+        .set({
+      'inApp': inAppNotifications,
+      'email': emailNotifications,
+    });
   }
 
   @override
@@ -54,17 +89,20 @@ class _SettingsPageState extends State<SettingsPage> {
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
-        leading: BackButton(color: isDark ? Colors.white : Colors.black),
-        title: Text(
-          'Settings',
-          style: TextStyle(
-            color: isDark ? Colors.white : Colors.black,
-            fontWeight: FontWeight.bold,
-            fontSize: 22,
-          ),
+        backgroundColor: isDark ? Colors.grey[900] : Colors.white,
+        title: const Text('Settings'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (widget.previousPage != null) {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => widget.previousPage!),
+              );
+            } else {
+              Navigator.pop(context);
+            }
+          },
         ),
       ),
       body: ListView(
@@ -85,19 +123,33 @@ class _SettingsPageState extends State<SettingsPage> {
             },
           ),
           const SizedBox(height: 16),
+
+          // --- Notifications Preferences ---
           _buildSwitchTile(
-            title: "Notifications",
-            subtitle: "Enable or disable notifications",
+            title: "In-App Notifications",
+            subtitle: "Receive notifications inside the app",
             icon: Icons.notifications,
-            value: _notificationsEnabled,
+            value: inAppNotifications,
             onChanged: (value) {
-              setState(() {
-                _notificationsEnabled = value;
-              });
+              setState(() => inAppNotifications = value);
+              _saveNotificationPreferences();
             },
             gradient: cardGradient,
           ),
           const SizedBox(height: 16),
+          _buildSwitchTile(
+            title: "Email Notifications",
+            subtitle: "Receive notifications via email",
+            icon: Icons.email,
+            value: emailNotifications,
+            onChanged: (value) {
+              setState(() => emailNotifications = value);
+              _saveNotificationPreferences();
+            },
+            gradient: cardGradient,
+          ),
+          const SizedBox(height: 16),
+
           _buildSwitchTile(
             title: "Dark Mode",
             subtitle: "Switch between light and dark themes",
@@ -109,6 +161,7 @@ class _SettingsPageState extends State<SettingsPage> {
             gradient: cardGradient,
           ),
           const SizedBox(height: 16),
+
           _buildGradientTile(
             title: "ChatBot",
             subtitle: "Get instant support",
@@ -123,7 +176,6 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 16),
 
-          // 🔹 Wallet (only if not admin)
           if (!isAdmin)
             _buildGradientTile(
               title: "Wallet",
@@ -137,15 +189,20 @@ class _SettingsPageState extends State<SettingsPage> {
                 );
               },
             ),
-
           const SizedBox(height: 16),
+
           _buildGradientTile(
             title: "Logout",
             subtitle: "Sign out from your account",
             icon: Icons.logout,
             gradient: [Colors.red.shade400, Colors.orange.shade400],
-            onTap: () {
-              Navigator.popUntil(context, (route) => route.isFirst);
+            onTap: () async {
+              await FirebaseAuth.instance.signOut();
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const LoginPage()),
+                    (route) => false,
+              );
             },
           ),
         ],
@@ -204,8 +261,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
             ),
-            const Icon(Icons.arrow_forward_ios,
-                color: Colors.white70, size: 18),
+            const Icon(Icons.arrow_forward_ios, color: Colors.white70, size: 18),
           ],
         ),
       ),
