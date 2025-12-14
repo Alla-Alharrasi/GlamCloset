@@ -1,29 +1,66 @@
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-class RentalsReportPage extends StatelessWidget {
-  final List<Map<String, String>> rentalHistory = [
-    {
-      "id": "R11",
-      "item": "Traditional Omani dress",
-      "date": "Jan 5-9, 2025",
-      "price": "150 OMR",
-      "status": "Completed"
-    },
-    {
-      "id": "R12",
-      "item": "Traditional Omani dress",
-      "date": "Feb 11-12, 2025",
-      "price": "100 OMR",
-      "status": "Completed"
-    },
-    {
-      "id": "R13",
-      "item": "Traditional Omani dress",
-      "date": "Apr 1-3, 2025",
-      "price": "100 OMR",
-      "status": "Canceled"
-    },
-  ];
+class RentalsReportPage extends StatefulWidget {
+  @override
+  State<RentalsReportPage> createState() => _RentalsReportPageState();
+}
+
+class _RentalsReportPageState extends State<RentalsReportPage> {
+  final DatabaseService _dbService = DatabaseService();
+  List<Map<String, dynamic>> rentalHistory = [];
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchRentalHistory();
+  }
+
+  Future<void> _fetchRentalHistory() async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+
+    _dbService.ordersStream().listen((orders) {
+      List<Map<String, dynamic>> rentals = [];
+
+      orders.forEach((userId, userOrders) {
+        if (userOrders is Map) {
+          userOrders.forEach((orderId, orderData) {
+            final items = orderData['items'] as Map<dynamic, dynamic>? ?? {};
+            String status = orderData['status'] ?? '';
+
+            // Convert Pending → Completed
+            if (status.toLowerCase() == 'pending') {
+              status = 'Completed';
+            }
+
+            if (status.toLowerCase() == 'completed' ||
+                status.toLowerCase() == 'canceled') {
+              items.forEach((itemId, itemData) {
+                rentals.add({
+                  "id": orderId,
+                  "item": itemData['name'] ?? '',
+                  "date": orderData['orderDate'] ?? '',
+                  "price": "${itemData['price'] ?? 0} OMR",
+                  "status": status,
+                });
+              });
+            }
+          });
+        }
+      });
+
+      setState(() {
+        rentalHistory = rentals;
+        isLoading = false;
+      });
+    });
+  }
 
   Color _getStatusColor(String status) {
     if (status.toLowerCase() == 'completed') return Colors.green;
@@ -31,53 +68,102 @@ class RentalsReportPage extends StatelessWidget {
     return Colors.grey;
   }
 
+  Future<void> _generatePdf(BuildContext context) async {
+    if (rentalHistory.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("No rentals to include in the PDF.")),
+      );
+      return;
+    }
+
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.MultiPage(
+        build: (pw.Context context) => [
+          pw.Text('Rentals Report',
+              style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 16),
+          pw.Table.fromTextArray(
+            headers: ['ID', 'Item', 'Date', 'Price', 'Status'],
+            data: rentalHistory.map((r) {
+              return [
+                r['id'] ?? '',
+                r['item'] ?? '',
+                r['date'] ?? '',
+                r['price'] ?? '',
+                r['status'] ?? ''
+              ];
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdf.save(),
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("✅ PDF downloaded successfully.")),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    int totalRentals = rentalHistory.length;
-    int totalPrice = rentalHistory.fold(0, (sum, item) {
-      return sum + int.parse(item['price']!.split(' ')[0]);
-    });
-
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = isDark ? Colors.black : Colors.grey.shade100;
     final cardColor = isDark ? Colors.grey.shade800 : Colors.white;
     final appBarColor = isDark ? Colors.grey.shade900 : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black;
+
+    int totalRentals = rentalHistory.length;
+
+    int totalPrice = rentalHistory.fold(0, (sum, item) {
+      return sum + int.tryParse(item['price']?.split(' ')[0] ?? '0')!;
+    });
+
+    // NEW → total number of clothes
+    int totalClothes = rentalHistory.length;
 
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        leading: BackButton(color: Colors.black),
+        leading: BackButton(color: textColor),
         backgroundColor: appBarColor,
         elevation: 1,
-        title: const Text(
+        title: Text(
           "Rentals Report",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+          style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
+        child: isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Summary cards
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildSummaryCard("Total Rentals", "$totalRentals", cardColor),
-                _buildSummaryCard("Total Price", "$totalPrice OMR", cardColor),
-                _buildSummaryCard("Item", "Traditional Omani dress", cardColor),
+                _buildSummaryCard(
+                    "Total Rentals", "$totalRentals", cardColor),
+                _buildSummaryCard(
+                    "Total Price", "$totalPrice OMR", cardColor),
+
+                // UPDATED CARD → Shows number of dresses
+                _buildSummaryCard(
+                    "Clothes", "$totalClothes Dresses", cardColor),
               ],
             ),
             const SizedBox(height: 24),
-
-            // Rental History
             const Text(
-              "Rental History",
+              "Rental History (Completed & Canceled)",
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
-
             Expanded(
               child: ListView.builder(
                 itemCount: rentalHistory.length,
@@ -87,14 +173,18 @@ class RentalsReportPage extends StatelessWidget {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    color: cardColor,
+                    color:
+                    rental['status']!.toLowerCase() == 'canceled'
+                        ? Colors.grey.shade300
+                        : cardColor,
                     elevation: 3,
                     margin: const EdgeInsets.symmetric(vertical: 8),
                     child: ListTile(
                       contentPadding: const EdgeInsets.all(16),
                       title: Text(
                         rental['item']!,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                        style:
+                        const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -106,16 +196,19 @@ class RentalsReportPage extends StatelessWidget {
                         ],
                       ),
                       trailing: Container(
-                        padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: _getStatusColor(rental['status']!).withOpacity(0.2),
+                          color: _getStatusColor(
+                              rental['status']!)
+                              .withOpacity(0.2),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
                           rental['status']!,
                           style: TextStyle(
-                            color: _getStatusColor(rental['status']!),
+                            color:
+                            _getStatusColor(rental['status']!),
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -125,32 +218,15 @@ class RentalsReportPage extends StatelessWidget {
                 },
               ),
             ),
-
-            // Export Buttons
+            const SizedBox(height: 12),
             Center(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ElevatedButton(
-                    onPressed: () {},
-                    child: const Text("PDF"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black,
-                      side: const BorderSide(color: Colors.black),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  ElevatedButton(
-                    onPressed: () {},
-                    child: const Text("Excel"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black,
-                      side: const BorderSide(color: Colors.black),
-                    ),
-                  ),
-                ],
+              child: ElevatedButton(
+                onPressed: () => _generatePdf(context),
+                child: const Text("Download PDF"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                ),
               ),
             ),
           ],
