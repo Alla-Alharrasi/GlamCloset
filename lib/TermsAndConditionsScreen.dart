@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'PaymentScreen.dart';
 
 class TermsAndConditionsScreen extends StatefulWidget {
-  final double amount; 
+  final double amount;
 
   const TermsAndConditionsScreen({super.key, required this.amount});
 
@@ -64,7 +64,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                       padding: EdgeInsets.all(20.0),
                       child: Text(
                         'Security Deposit and Return Policy:\n\n'
-                            '• The total rental amount includes the outfit rental price plus a security deposit of 20 OMR, payable at the time of rental.\n\n'
+                            '• The total rental amount includes the outfit rental price plus a security deposit of 5 OMR, payable at the time of rental.\n\n'
                             '• The rented outfit must be returned within 5 days from the rental date.\n\n'
                             '• In case of late returns, additional fees will be charged for each day of delay.\n\n'
                             '• The security deposit will be refunded after the rented item is returned in good condition.',
@@ -117,7 +117,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                       context,
                       MaterialPageRoute(
                         builder: (context) =>
-                            PaymentScreen(amount: widget.amount), 
+                            PaymentScreen(amount: widget.amount),
                       ),
                     );
                   }
@@ -134,7 +134,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
                     elevation: 6,
                   ),
                   child: Text(
-                    'Pay ${widget.amount.toStringAsFixed(2)} OMR', 
+                    'Pay ${widget.amount.toStringAsFixed(2)} OMR',
                     style: const TextStyle(fontSize: 18.0, color: Colors.white),
                   ),
                 ),
@@ -146,4 +146,3 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
     );
   }
 }
- 
